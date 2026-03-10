@@ -20,6 +20,10 @@ import api from "../api/api";
 const inputCls =
   "w-full px-4 py-3 bg-gray-50/50 border border-gray-100 rounded-xl text-[13px] focus:ring-2 focus:ring-[#E47926]/20 focus:border-[#E47926] focus:outline-none transition-all placeholder:text-gray-400 font-medium";
 
+/* ─── read-only override — no orange ring ─── */
+const readOnlyCls =
+  "w-full px-4 py-3 bg-gray-50/80 border border-gray-100 rounded-xl text-[13px] text-gray-500 font-medium resize-none cursor-default select-none outline-none focus:ring-0 focus:border-gray-100";
+
 /* ─── item thumbnail ─── */
 const Thumb = ({ url, alt }) => (
   <div className="w-12 h-12 rounded-lg bg-gray-100 overflow-hidden flex-shrink-0 flex items-center justify-center text-gray-300 text-[9px] font-bold">
@@ -270,11 +274,13 @@ const Movement = () => {
     contact: "",
     purpose: "",
     comments: "",
+    reviewerComments: "",
     dueDate: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [borrowerLocked, setBorrowerLocked] = useState(false);
 
   useEffect(() => {
     api.get("/items").then((res) => {
@@ -286,12 +292,14 @@ const Movement = () => {
   const switchTab = (tab) => {
     setActiveTab(tab);
     setCart([]);
+    setBorrowerLocked(false);
     setForm({
       borrowerName: "",
       borrowerId: "",
       contact: "",
       purpose: "",
       comments: "",
+      reviewerComments: "",
       dueDate: "",
     });
     setSuccessMsg("");
@@ -322,18 +330,36 @@ const Movement = () => {
       borrowerName: mv.borrower_name,
       borrowerId: mv.borrower_id || "",
       contact: mv.contact || "",
+      purpose: mv.purpose || "",
+      comments: mv.comments || "",
+      reviewerComments: "",
     }));
     if (mv.role) setRole(mv.role);
+    setBorrowerLocked(true);
     const newCart = (mv.items || []).map((it) => ({
       itemId: it.item_id,
       name: it.name,
       asset_tag: it.asset_tag,
       image_url: it.image_url,
       available_quantity: it.available_quantity,
-      maxQty: it.quantity, // max they can return = what they borrowed
+      maxQty: it.quantity,
       qty: it.quantity,
     }));
     setCart(newCart);
+  };
+
+  const clearBorrower = () => {
+    setBorrowerLocked(false);
+    setCart([]);
+    setForm((prev) => ({
+      ...prev,
+      borrowerName: "",
+      borrowerId: "",
+      contact: "",
+      purpose: "",
+      comments: "",
+      reviewerComments: "",
+    }));
   };
 
   const removeFromCart = (itemId) =>
@@ -379,7 +405,8 @@ const Movement = () => {
         contact: form.contact,
         role,
         purpose: form.purpose,
-        comments: form.comments,
+        comments:
+          activeTab === "return" ? form.reviewerComments : form.comments,
         dueDate: form.dueDate || null,
         items: cart.map((c) => ({ itemId: c.itemId, quantity: c.qty })),
       });
@@ -390,12 +417,14 @@ const Movement = () => {
             : "Items returned successfully!",
         );
         setCart([]);
+        setBorrowerLocked(false);
         setForm({
           borrowerName: "",
           borrowerId: "",
           contact: "",
           purpose: "",
           comments: "",
+          reviewerComments: "",
           dueDate: "",
         });
         const refreshed = await api.get("/items");
@@ -411,7 +440,7 @@ const Movement = () => {
 
   return (
     <div className="flex-1 relative font-sans">
-        <div className="fixed right-0 bottom-80 w-[28%] pointer-events-none z-0 overflow-hidden flex flex-col items-center">
+      <div className="fixed right-0 bottom-80 w-[28%] pointer-events-none z-0 overflow-hidden flex flex-col items-center">
         <img
           src="/movement.png"
           alt="Camera illustration"
@@ -476,13 +505,33 @@ const Movement = () => {
                       Full Name <span className="text-red-500">*</span>
                     </label>
                     {activeTab === "return" ? (
-                      <BorrowerSearch
-                        value={form.borrowerName}
-                        onChange={(val) =>
-                          setForm((p) => ({ ...p, borrowerName: val }))
-                        }
-                        onSelect={handleBorrowerSelect}
-                      />
+                      borrowerLocked ? (
+                        <div className="relative">
+                          <input
+                            value={form.borrowerName}
+                            readOnly
+                            className={
+                              inputCls +
+                              " bg-gray-50/80 text-gray-600 cursor-not-allowed pr-10"
+                            }
+                          />
+                          <button
+                            onClick={clearBorrower}
+                            title="Clear selection"
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-300 hover:text-red-400 transition"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <BorrowerSearch
+                          value={form.borrowerName}
+                          onChange={(val) =>
+                            setForm((p) => ({ ...p, borrowerName: val }))
+                          }
+                          onSelect={handleBorrowerSelect}
+                        />
+                      )
                     ) : (
                       <input
                         name="borrowerName"
@@ -520,7 +569,13 @@ const Movement = () => {
                     onChange={handleChange}
                     type="text"
                     placeholder="Enter contact number"
-                    className={inputCls}
+                    className={
+                      inputCls +
+                      (borrowerLocked
+                        ? " bg-gray-50/80 text-gray-600 cursor-not-allowed"
+                        : "")
+                    }
+                    readOnly={borrowerLocked}
                   />
                 </div>
 
@@ -528,12 +583,14 @@ const Movement = () => {
                   <label className="block text-[11px] font-extrabold text-gray-400 tracking-wide uppercase mb-2">
                     Role
                   </label>
-                  <div className="flex items-center bg-gray-50/50 border border-gray-100 rounded-xl p-1">
+                  <div
+                    className={`flex items-center bg-gray-50/50 border border-gray-100 rounded-xl p-1 ${borrowerLocked ? "pointer-events-none opacity-60" : ""}`}
+                  >
                     {["student", "faculty"].map((r) => (
                       <button
                         key={r}
-                        onClick={() => setRole(r)}
-                        className={`flex-1 py-2 rounded-lg text-[13px] font-bold transition-all capitalize ${role === r ? "bg-white text-[#E47926] border border-orange-100 shadow-sm" : "text-gray-500 hover:text-gray-900 border border-transparent"}`}
+                        onClick={() => !borrowerLocked && setRole(r)}
+                        className={`flex-1 py-2 rounded-lg text-[13px] font-bold transition-all capitalize ${role === r ? "bg-white text-[#E47926] border border-orange-100 shadow-sm" : "text-gray-500 border border-transparent"}`}
                       >
                         {r}
                       </button>
@@ -569,26 +626,81 @@ const Movement = () => {
                   <AlignLeft size={16} strokeWidth={2.5} />
                 </div>
                 <h3 className="text-[15px] font-bold text-gray-900">
-                  Purpose & Comments
+                  Purpose &amp; Comments
                 </h3>
               </div>
               <div className="space-y-4">
-                <textarea
-                  name="purpose"
-                  value={form.purpose}
-                  onChange={handleChange}
-                  rows="2"
-                  placeholder="Describe the purpose of borrowing…"
-                  className={inputCls + " resize-none"}
-                />
-                <textarea
-                  name="comments"
-                  value={form.comments}
-                  onChange={handleChange}
-                  rows="2"
-                  placeholder="Additional comments or notes"
-                  className={inputCls + " resize-none"}
-                />
+                {/* Purpose — editable for issue, read-only for return */}
+                <div>
+                  <label className="block text-[11px] font-extrabold text-gray-400 tracking-wide uppercase mb-2">
+                    {activeTab === "return"
+                      ? "Original Purpose (from borrowing)"
+                      : "Purpose"}
+                  </label>
+                  <textarea
+                    name="purpose"
+                    value={form.purpose}
+                    onChange={activeTab === "issue" ? handleChange : undefined}
+                    readOnly={activeTab === "return"}
+                    rows="2"
+                    placeholder={
+                      activeTab === "issue"
+                        ? "Describe the purpose of borrowing…"
+                        : ""
+                    }
+                    className={
+                      activeTab === "return"
+                        ? readOnlyCls
+                        : inputCls + " resize-none"
+                    }
+                  />
+                </div>
+
+                {/* Borrower's original comments — read-only, only on return if exists */}
+                {activeTab === "return" && form.comments ? (
+                  <div>
+                    <label className="block text-[11px] font-extrabold text-gray-400 tracking-wide uppercase mb-2">
+                      Borrower's Comments
+                    </label>
+                    <textarea
+                      value={form.comments}
+                      readOnly
+                      rows="2"
+                      className={readOnlyCls}
+                    />
+                  </div>
+                ) : activeTab === "issue" ? (
+                  <div>
+                    <label className="block text-[11px] font-extrabold text-gray-400 tracking-wide uppercase mb-2">
+                      Additional Comments
+                    </label>
+                    <textarea
+                      name="comments"
+                      value={form.comments}
+                      onChange={handleChange}
+                      rows="2"
+                      placeholder="Additional comments or notes"
+                      className={inputCls + " resize-none"}
+                    />
+                  </div>
+                ) : null}
+
+                {/* Reviewer Comments — editable, only on return tab */}
+                {activeTab === "return" && (
+                  <div>
+                    <label className="block text-[11px] font-extrabold text-gray-400 tracking-wide uppercase mb-2">
+                      Reviewer Comments
+                    </label>
+                    <textarea
+                      name="reviewerComments"
+                      value={form.reviewerComments}
+                      onChange={handleChange}
+                      rows="2"
+                      placeholder="Add reviewer notes about the return…"
+                      className={inputCls + " resize-none"}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>

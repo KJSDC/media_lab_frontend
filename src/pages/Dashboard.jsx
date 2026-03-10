@@ -31,14 +31,28 @@ const buildWeekActivity = (items) => {
   }));
 };
 
-const isOverdue = (dueDate) => dueDate && new Date(dueDate) < new Date();
+const isOverdue = (dueDate) => {
+  if (!dueDate) return false;
+  const due = new Date(dueDate);
+  const now = new Date();
+  // Same calendar day → only overdue after 4:30 PM
+  if (due.toDateString() === now.toDateString()) {
+    const cutoff = new Date(now);
+    cutoff.setHours(16, 30, 0, 0);
+    return now > cutoff;
+  }
+  // Any past day → overdue
+  return due < now;
+};
 
 /* For each movement, explode into per-item rows */
 const buildActivityRows = (movements) => {
   const rows = [];
   movements.forEach((mv) => {
+    const isReturned = mv.type === "return" || !!mv.returned_at;
+    const overdue =
+      !isReturned && mv.type === "issue" && isOverdue(mv.due_date);
     (mv.items || []).forEach((it) => {
-      const overdue = mv.type === "issue" && isOverdue(mv.due_date);
       rows.push({
         mvId: mv.id,
         itemName: it.name,
@@ -50,12 +64,13 @@ const buildActivityRows = (movements) => {
         borrowerId: mv.borrower_id,
         contact: mv.contact,
         dueDate: mv.due_date,
+        returnedAt: mv.returned_at,
+        purpose: mv.purpose,
+        comments: mv.comments,
+        type: mv.type,
+        createdAt: mv.created_at,
         overdue,
-        status: overdue
-          ? "Overdue"
-          : mv.type === "issue"
-            ? "Issued"
-            : "Returned",
+        status: isReturned ? "Returned" : overdue ? "Overdue" : "Issued",
       });
     });
   });
@@ -79,7 +94,7 @@ const StatusPill = ({ status }) => {
 };
 
 /* ── main ── */
-const Dashboard = () => {
+const Dashboard = ({ onNavigate }) => {
   const [stats, setStats] = useState({
     totalItems: 0,
     available: 0,
@@ -93,6 +108,7 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("items");
   const [showOverdueOnly, setShowOverdueOnly] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [selectedRow, setSelectedRow] = useState(null);
 
   const PAGE_SIZE = 5;
 
@@ -128,6 +144,63 @@ const Dashboard = () => {
     actPage * PAGE_SIZE,
     actPage * PAGE_SIZE + PAGE_SIZE,
   );
+
+  const handleExportCSV = () => {
+    const headers = [
+      "Item Name",
+      "Asset Tag",
+      "Category",
+      "Issued To",
+      "Role",
+      "Borrower ID",
+      "Contact",
+      "Due Date",
+      "Returned On",
+      "Status",
+      "Purpose",
+      "Comments",
+      "Type",
+      "Date",
+    ];
+    const fmt = (d) =>
+      d
+        ? new Date(d).toLocaleDateString("en-IN", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          })
+        : "";
+    const rows = activityRows.map((r) => [
+      r.itemName,
+      r.assetTag,
+      r.category,
+      r.issuedTo,
+      r.role,
+      r.borrowerId,
+      r.contact,
+      r.type === "return" ? "" : fmt(r.dueDate),
+      r.type === "return" ? fmt(r.createdAt) : fmt(r.returnedAt),
+      r.status,
+      r.purpose,
+      r.comments,
+      r.type === "issue" ? "Issue" : "Return",
+      fmt(r.createdAt),
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) =>
+        row
+          .map((v) => `"${(v ?? "").toString().replace(/"/g, '""')}"`)
+          .join(","),
+      )
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `activity_report_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="flex-1 relative font-sans">
@@ -299,6 +372,14 @@ const Dashboard = () => {
                   icon: AlertTriangle,
                   bg: "bg-red-50/50 group-hover:bg-red-50",
                   color: "text-red-400 group-hover:text-red-500",
+                  onClick: () => {
+                    setActiveTab("activity");
+                    setShowOverdueOnly(true);
+                    setActPage(0);
+                    document
+                      .getElementById("dashboard-tabs")
+                      ?.scrollIntoView({ behavior: "smooth" });
+                  },
                 },
                 {
                   label: "Scan Item",
@@ -306,6 +387,7 @@ const Dashboard = () => {
                   icon: Crosshair,
                   bg: "bg-blue-50/50 group-hover:bg-blue-50",
                   color: "text-blue-400 group-hover:text-blue-500",
+                  onClick: null,
                 },
                 {
                   label: "Generate Report",
@@ -313,11 +395,18 @@ const Dashboard = () => {
                   icon: FileText,
                   bg: "bg-purple-50/50 group-hover:bg-purple-50",
                   color: "text-purple-400 group-hover:text-purple-500",
+                  onClick: handleExportCSV,
                 },
-              ].map(({ label, sub, icon: Icon, bg, color }) => (
+              ].map(({ label, sub, icon: Icon, bg, color, onClick }) => (
                 <button
                   key={label}
-                  className="w-full flex items-center gap-4 p-4 rounded-[24px] border border-gray-100 hover:bg-gray-50 transition-all group text-left"
+                  onClick={onClick || undefined}
+                  disabled={!onClick}
+                  className={`w-full flex items-center gap-4 p-4 rounded-[24px] border border-gray-100 transition-all group text-left ${
+                    onClick
+                      ? "hover:bg-gray-50 cursor-pointer"
+                      : "opacity-50 cursor-not-allowed"
+                  }`}
                 >
                   <div
                     className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${bg} ${color}`}
@@ -337,7 +426,10 @@ const Dashboard = () => {
         </div>
 
         {/* ── Tabs (Recent Items / Activity) ── */}
-        <div className="bg-white rounded-[12px] border border-gray-100  overflow-hidden w-full mb-4">
+        <div
+          id="dashboard-tabs"
+          className="bg-white rounded-[12px] border border-gray-100  overflow-hidden w-full mb-4"
+        >
           <div className="px-8 pt-6 flex justify-between items-center bg-gray-50/30 border-b border-gray-100">
             <div className="flex gap-8">
               <button
@@ -358,30 +450,40 @@ const Dashboard = () => {
             </div>
             <div className="flex items-center gap-6 pb-2">
               {activeTab === "activity" && (
-                <label className="flex items-center gap-2 cursor-pointer touch-none select-none">
-                  <div className="relative flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={showOverdueOnly}
-                      onChange={(e) => {
-                        setShowOverdueOnly(e.target.checked);
-                        setActPage(0);
-                      }}
-                      className="peer sr-only"
-                    />
-                    <div
-                      className={`w-9 h-5 rounded-full transition-colors ${showOverdueOnly ? "bg-red-500" : "bg-gray-200"}`}
-                    ></div>
-                    <div
-                      className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${showOverdueOnly ? "translate-x-4 shadow-sm" : "shadow-sm"}`}
-                    ></div>
-                  </div>
-                  <span
-                    className={`text-[13px] font-bold transition-colors ${showOverdueOnly ? "text-red-600" : "text-gray-500"}`}
+                <>
+                  <label className="flex items-center gap-2 cursor-pointer touch-none select-none">
+                    <div className="relative flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={showOverdueOnly}
+                        onChange={(e) => {
+                          setShowOverdueOnly(e.target.checked);
+                          setActPage(0);
+                        }}
+                        className="peer sr-only"
+                      />
+                      <div
+                        className={`w-9 h-5 rounded-full transition-colors ${showOverdueOnly ? "bg-red-500" : "bg-gray-200"}`}
+                      ></div>
+                      <div
+                        className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${showOverdueOnly ? "translate-x-4 shadow-sm" : "shadow-sm"}`}
+                      ></div>
+                    </div>
+                    <span
+                      className={`text-[13px] font-bold transition-colors ${showOverdueOnly ? "text-red-600" : "text-gray-500"}`}
+                    >
+                      Overdue Only
+                    </span>
+                  </label>
+                  <button
+                    onClick={handleExportCSV}
+                    disabled={activityRows.length === 0}
+                    className="flex items-center gap-1.5 text-[12px] font-bold text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-100 border border-gray-100 transition-all disabled:opacity-40"
                   >
-                    Overdue Only
-                  </span>
-                </label>
+                    <FileText size={13} />
+                    Export CSV
+                  </button>
+                </>
               )}
               <a
                 href="#"
@@ -543,7 +645,8 @@ const Dashboard = () => {
                       return (
                         <tr
                           key={`${row.mvId}-${idx}`}
-                          className="hover:bg-gray-50/50 transition-colors group"
+                          onClick={() => setSelectedRow(row)}
+                          className="hover:bg-gray-50/50 transition-colors group cursor-pointer"
                         >
                           {/* Item */}
                           <td className="px-8 py-4 whitespace-nowrap">
@@ -649,6 +752,154 @@ const Dashboard = () => {
           )}
         </div>
       </main>
+
+      {/* Movement Detail Modal */}
+      {selectedRow && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/20 backdrop-blur-sm"
+          onClick={() => setSelectedRow(null)}
+        >
+          <div
+            className="bg-white rounded-[20px] shadow-2xl w-full max-w-lg p-7 relative animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between mb-6">
+              <div>
+                <h2 className="text-[18px] font-bold text-gray-900 leading-tight">
+                  Movement Details
+                </h2>
+                <p className="text-[12px] font-medium text-gray-400 mt-0.5">
+                  Read-only record
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <StatusPill status={selectedRow.status} />
+                <button
+                  onClick={() => setSelectedRow(null)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Item Info */}
+            <div className="flex items-center gap-3 mb-6 p-3 bg-gray-50 rounded-xl border border-gray-100">
+              <div className="w-12 h-12 rounded-xl bg-white border border-gray-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                {selectedRow.imageUrl ? (
+                  <img
+                    src={`http://localhost:5000${selectedRow.imageUrl}`}
+                    alt={selectedRow.itemName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-[9px] font-bold text-gray-300">
+                    IMG
+                  </span>
+                )}
+              </div>
+              <div>
+                <p className="text-[14px] font-bold text-gray-900">
+                  {selectedRow.itemName}
+                </p>
+                <p className="text-[11px] font-medium text-gray-400">
+                  ID: {selectedRow.assetTag} · {selectedRow.category}
+                </p>
+              </div>
+            </div>
+
+            {/* Details Grid */}
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4 mb-6">
+              {[
+                { label: "Issued To", val: selectedRow.issuedTo },
+                { label: "Role", val: selectedRow.role },
+                { label: "Borrower ID", val: selectedRow.borrowerId },
+                { label: "Contact", val: selectedRow.contact },
+                {
+                  label: "Due Date",
+                  val:
+                    selectedRow.type === "return"
+                      ? "—"
+                      : selectedRow.dueDate
+                        ? new Date(selectedRow.dueDate).toLocaleDateString(
+                            "en-IN",
+                            { day: "numeric", month: "short", year: "numeric" },
+                          )
+                        : "—",
+                  red: selectedRow.overdue,
+                },
+                {
+                  label: "Returned On",
+                  val:
+                    selectedRow.type === "return"
+                      ? new Date(selectedRow.createdAt).toLocaleDateString(
+                          "en-IN",
+                          { day: "numeric", month: "short", year: "numeric" },
+                        )
+                      : selectedRow.returnedAt
+                        ? new Date(selectedRow.returnedAt).toLocaleDateString(
+                            "en-IN",
+                            { day: "numeric", month: "short", year: "numeric" },
+                          )
+                        : "—",
+                  green: selectedRow.type === "return",
+                },
+                {
+                  label: "Issued On",
+                  val: selectedRow.createdAt
+                    ? new Date(selectedRow.createdAt).toLocaleDateString(
+                        "en-IN",
+                        { day: "numeric", month: "short", year: "numeric" },
+                      )
+                    : "—",
+                },
+                {
+                  label: "Type",
+                  val: selectedRow.type === "issue" ? "Issue" : "Return",
+                },
+              ].map(({ label, val, red, green }) => (
+                <div key={label}>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                    {label}
+                  </p>
+                  <p
+                    className={`text-[13px] font-semibold ${red ? "text-red-500" : green ? "text-green-600" : "text-gray-800"}`}
+                  >
+                    {val || "—"}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* Purpose & Comments */}
+            {(selectedRow.purpose || selectedRow.comments) && (
+              <div className="space-y-3 border-t border-gray-100 pt-4">
+                {selectedRow.purpose && (
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                      Purpose
+                    </p>
+                    <p className="text-[13px] font-medium text-gray-700 leading-relaxed">
+                      {selectedRow.purpose}
+                    </p>
+                  </div>
+                )}
+                {selectedRow.comments && (
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                      Comments
+                    </p>
+                    <p className="text-[13px] font-medium text-gray-700 leading-relaxed">
+                      {selectedRow.comments}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
