@@ -713,9 +713,9 @@ const Inventory = () => {
                       <td className="py-3 px-6">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400 border border-gray-100 group-hover:bg-white group-hover:border-gray-200 transition-all overflow-hidden flex-shrink-0">
-                            {item.image_url ? (
+                            {item.image_b64 ? (
                               <img
-                                src={`http://localhost:5000${item.image_url}`}
+                                src={`http://localhost:5000${item.image_b64}`}
                                 alt={item.name}
                                 className="w-full h-full object-cover"
                               />
