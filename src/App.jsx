@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import { useAuth } from "./context/AuthContext";
 import Login from "./Login";
@@ -10,10 +11,16 @@ import Inventory from "./pages/Inventory";
 import Configuration from "./pages/Configuration";
 
 function App() {
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const { isAuthenticated, loading } = useAuth();
   const [currentView, setCurrentView] = useState("dashboard");
 
-  // Show nothing while we check stored credentials
+
+  const handleItemSaved = () => {
+    setRefreshTrigger((t) => t + 1);
+ 
+  };
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#F9FAFB]">
@@ -22,7 +29,6 @@ function App() {
     );
   }
 
-  // Not logged in → show login screen
   if (!isAuthenticated) return <Login />;
 
   return (
@@ -45,9 +51,16 @@ function App() {
                       : ""
           }
         />
-        {currentView === "dashboard" && <Dashboard />}
-        {currentView === "add-item" && <AddItem />}
-        {currentView === "movement" && <Movement />}
+        {currentView === "dashboard" && (
+          <Dashboard refreshTrigger={refreshTrigger} onNavigate={setCurrentView} />
+        )}
+        {currentView === "add-item" && (
+          // ✅ Pass onItemSaved so AddItem can trigger dashboard refresh
+          <AddItem onItemSaved={handleItemSaved} />
+        )}
+        {currentView === "movement" && (
+          <Movement onMovementSaved={handleItemSaved} />
+        )}
         {currentView === "inventory" && <Inventory />}
         {currentView === "configuration" && <Configuration />}
       </div>
