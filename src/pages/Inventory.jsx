@@ -45,7 +45,14 @@ const getCategoryIcon = (category) => {
   }
 };
 
-const STATUSES = ["All", "Available", "Under Service", "Damaged"];
+const STATUSES = [
+  "All",
+  "Available",
+  "Under Service",
+  "Damaged",
+  "Lost",
+  "Wear/Tear",
+];
 const CATEGORIES = [
   "All",
   "Cameras",
@@ -322,33 +329,42 @@ const EditModal = ({ item, onClose, onSaved }) => {
   );
 };
 
-/* ──────────────────────────────── delete confirm ── */
-const DeleteModal = ({ item, onClose, onDeleted }) => {
-  const [deleting, setDeleting] = useState(false);
+/* ──────────────────────────────── toggle active confirm ── */
+const ToggleActiveModal = ({ item, onClose, onToggled }) => {
+  const [toggling, setToggling] = useState(false);
+  const isCurrentlyActive = item.is_active !== false; // handle null/undefined as true
+  const targetState = !isCurrentlyActive;
 
-  const handleDelete = async () => {
-    setDeleting(true);
+  const handleToggle = async () => {
+    setToggling(true);
     try {
-      await api.delete(`/items/${item.id}`);
-      onDeleted(item.id);
+      const res = await api.patch(`/items/${item.id}/active`, {
+        is_active: targetState,
+      });
+      if (res.data.success) {
+        onToggled(res.data.item);
+      }
       onClose();
-    } catch {
-      setDeleting(false);
+    } catch (err) {
+      console.error(err);
+      setToggling(false);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-        <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center mb-4">
-          <Trash2 size={22} />
+        <div
+          className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 ${targetState ? "bg-green-50 text-green-500" : "bg-red-50 text-red-500"}`}
+        >
+          {targetState ? <AlertCircle size={22} /> : <AlertCircle size={22} />}
         </div>
         <h2 className="text-[16px] font-extrabold text-gray-900 mb-1">
-          Delete Item?
+          Mark as {targetState ? "Active" : "Inactive"}?
         </h2>
         <p className="text-[13px] text-gray-500 font-medium mb-6">
           <span className="font-bold text-gray-900">"{item.name}"</span> will be
-          permanently removed from the inventory. This action cannot be undone.
+          marked as {targetState ? "Active" : "Inactive"}.
         </p>
         <div className="flex items-center justify-end gap-3">
           <button
@@ -358,12 +374,13 @@ const DeleteModal = ({ item, onClose, onDeleted }) => {
             Cancel
           </button>
           <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-500 text-white text-[13px] font-bold hover:bg-red-600 transition-all disabled:opacity-70"
+            onClick={handleToggle}
+            disabled={toggling}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-[13px] font-bold transition-all disabled:opacity-70 ${targetState ? "bg-green-500 hover:bg-green-600" : "bg-red-500 hover:bg-red-600"}`}
           >
-            <Trash2 size={15} />
-            {deleting ? "Deleting…" : "Yes, Delete"}
+            {toggling
+              ? "Updating…"
+              : `Yes, Mark ${targetState ? "Active" : "Inactive"}`}
           </button>
         </div>
       </div>
@@ -372,7 +389,7 @@ const DeleteModal = ({ item, onClose, onDeleted }) => {
 };
 
 /* ─────────────────────────────── row action menu ── */
-const ActionMenu = ({ item, onEdit, onDelete }) => {
+const ActionMenu = ({ item, onEdit, onToggleActive }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -393,7 +410,7 @@ const ActionMenu = ({ item, onEdit, onDelete }) => {
         <MoreVertical size={16} />
       </button>
       {open && (
-        <div className="absolute right-0 top-8 z-20 bg-white border border-gray-100 rounded-xl shadow-lg w-36 overflow-hidden">
+        <div className="absolute right-0 top-8 z-20 bg-white border border-gray-100 rounded-xl shadow-lg w-40 overflow-hidden">
           <button
             onClick={() => {
               setOpen(false);
@@ -406,11 +423,17 @@ const ActionMenu = ({ item, onEdit, onDelete }) => {
           <button
             onClick={() => {
               setOpen(false);
-              onDelete(item);
+              onToggleActive(item);
             }}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-semibold text-red-600 hover:bg-red-50 transition-colors"
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
           >
-            <Trash2 size={14} /> Delete
+            <AlertCircle
+              size={14}
+              className={
+                item.is_active === false ? "text-green-500" : "text-red-500"
+              }
+            />
+            {item.is_active === false ? "Mark Active" : "Mark Inactive"}
           </button>
         </div>
       )}
@@ -427,7 +450,7 @@ const Inventory = () => {
   const [filterCategory, setFilterCategory] = useState("All");
   const [filterLocation, setFilterLocation] = useState("All");
   const [editItem, setEditItem] = useState(null);
-  const [deleteItem, setDeleteItem] = useState(null);
+  const [toggleActiveItem, setToggleActiveItem] = useState(null);
 
   useEffect(() => {
     const fetchItems = async () => {
@@ -474,11 +497,15 @@ const Inventory = () => {
     filterCategory !== "All" ||
     filterLocation !== "All";
 
-  const handleSaved = (updated) =>
-    setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
-  const handleDeleted = (id) =>
-    setItems((prev) => prev.filter((i) => i.id !== id));
+  const handleSaved = (saved) => {
+    setItems((prev) => prev.map((i) => (i.id === saved.id ? saved : i)));
+  };
 
+  const handleToggledActive = (updatedItem) => {
+    setItems((prev) =>
+      prev.map((i) => (i.id === updatedItem.id ? updatedItem : i)),
+    );
+  };
   const handleExportCSV = () => {
     if (filtered.length === 0) return;
     const headers = [
@@ -540,11 +567,11 @@ const Inventory = () => {
           onSaved={handleSaved}
         />
       )}
-      {deleteItem && (
-        <DeleteModal
-          item={deleteItem}
-          onClose={() => setDeleteItem(null)}
-          onDeleted={handleDeleted}
+      {toggleActiveItem && (
+        <ToggleActiveModal
+          item={toggleActiveItem}
+          onClose={() => setToggleActiveItem(null)}
+          onToggled={handleToggledActive}
         />
       )}
 
@@ -708,7 +735,7 @@ const Inventory = () => {
                   return (
                     <tr
                       key={item.id}
-                      className="hover:bg-gray-50/50 transition-colors group"
+                      className={`transition-colors group ${item.is_active === false ? "opacity-60 bg-gray-50 hover:bg-gray-100/60" : "hover:bg-gray-50/50"}`}
                     >
                       <td className="py-3 px-6">
                         <div className="flex items-center gap-4">
@@ -724,8 +751,13 @@ const Inventory = () => {
                             )}
                           </div>
                           <div className="flex flex-col">
-                            <span className="text-[13px] font-semibold text-gray-900 leading-tight mb-0.5">
+                            <span className="text-[13px] font-semibold text-gray-900 leading-tight mb-0.5 flex items-center gap-2">
                               {item.name}
+                              {item.is_active === false && (
+                                <span className="bg-gray-100 text-gray-500 text-[9px] px-1.5 py-0.5 rounded uppercase font-bold tracking-widest">
+                                  Inactive
+                                </span>
+                              )}
                             </span>
                             <span className="text-[11px] font-medium text-gray-400 flex items-center gap-1.5">
                               {item.asset_tag}
@@ -758,7 +790,7 @@ const Inventory = () => {
                         <ActionMenu
                           item={item}
                           onEdit={setEditItem}
-                          onDelete={setDeleteItem}
+                          onToggleActive={setToggleActiveItem}
                         />
                       </td>
                     </tr>

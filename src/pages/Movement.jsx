@@ -102,6 +102,7 @@ const ItemSearch = ({ allItems, cart, onAdd }) => {
   const results = allItems.filter(
     (i) =>
       i.available_quantity > 0 &&
+      i.is_active !== false &&
       !cart.find((c) => c.itemId === i.id) &&
       (i.name.toLowerCase().includes(query.toLowerCase()) ||
         i.asset_tag.toLowerCase().includes(query.toLowerCase())),
