@@ -105,28 +105,33 @@ const Dashboard = ({ onNavigate, refreshTrigger }) => {
   const PAGE_SIZE = 5;
 
   // ✅ fetchData is now a reusable callback
-  const fetchData = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    else setRefreshing(true);
-    try {
-      const [statsRes, itemsRes, mvRes] = await Promise.all([
-        api.get("/items/stats", { headers: { "Cache-Control": "no-cache" } }),
-        api.get("/items", { headers: { "Cache-Control": "no-cache" } }),
-        api.get("/movements", { headers: { "Cache-Control": "no-cache" } }),
-      ]);
-      if (statsRes.data.success) setStats(statsRes.data.stats);
-      if (itemsRes.data.success) {
-        setItems(itemsRes.data.items);
-        setChartData(buildWeekActivity(itemsRes.data.items));
-      }
-      if (mvRes.data.success) setMovements(mvRes.data.movements);
-    } catch (err) {
-      console.error("Error fetching dashboard data:", err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+const fetchData = useCallback(async (silent = false) => {
+  if (!silent) setLoading(true);
+  else setRefreshing(true);
+
+  try {
+    // Fetch stats
+    const statsRes = await api.get("/items/stats");
+    if (statsRes.data.success) setStats(statsRes.data.stats);
+
+    // Fetch items
+    const itemsRes = await api.get("/items");
+    if (itemsRes.data.success) {
+      setItems(itemsRes.data.items);
+      setChartData(buildWeekActivity(itemsRes.data.items));
     }
-  }, []);
+
+    // Fetch movements
+    const mvRes = await api.get("/movements");
+    if (mvRes.data.success) setMovements(mvRes.data.movements);
+
+  } catch (err) {
+    console.error("Dashboard Fetch Error:", err.response?.data || err.message);
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+  }
+}, []);
 
   // ✅ Fetch on mount
   useEffect(() => { fetchData(); }, [fetchData]);
