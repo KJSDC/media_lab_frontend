@@ -329,6 +329,7 @@ const EditModal = ({ item, onClose, onSaved }) => {
   );
 };
 
+
 /* ──────────────────────────────── toggle active confirm ── */
 const ToggleActiveModal = ({ item, onClose, onToggled }) => {
   const [toggling, setToggling] = useState(false);
@@ -388,6 +389,147 @@ const ToggleActiveModal = ({ item, onClose, onToggled }) => {
   );
 };
 
+/* ──────────────────────────────── item detail modal ── */
+const ItemDetailModal = ({ item, onClose }) => {
+  if (!item) return null;
+
+  const detailGroupCls = "space-y-1.5";
+  const labelCls = "text-[11px] font-medium text-gray-400 uppercase tracking-wider";
+  const valueCls = "text-[13px] font-medium text-gray-700";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh]">
+        {/* Left Side: Image */}
+        <div className="w-full md:w-1/2 bg-gray-50 flex items-center justify-center p-6 border-b md:border-b-0 md:border-r border-gray-100 relative">
+          <div className="w-full h-full min-h-[300px] flex items-center justify-center rounded-2xl overflow-hidden bg-white border border-gray-100 shadow-inner">
+            {item.image_b64 ? (
+              <img
+                src={item.image_b64}
+                alt={item.name}
+                className="w-full h-full object-contain"
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-3 text-gray-300">
+                {React.createElement(getCategoryIcon(item.category), { size: 64, strokeWidth: 1 })}
+                <span className="text-[12px] font-medium uppercase tracking-widest">No Image Available</span>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 md:hidden w-8 h-8 flex items-center justify-center rounded-full bg-white/80 backdrop-blur shadow-sm text-gray-500"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Right Side: Details */}
+        <div className="w-full md:w-1/2 p-8 flex flex-col">
+          <div className="flex justify-between items-start mb-6">
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold text-[#E47926] bg-orange-50 px-2 py-0.5 rounded-full uppercase tracking-widest">
+                {item.category}
+              </span>
+              <h2 className="text-[20px] font-medium text-gray-900 leading-tight">
+                {item.name}
+              </h2>
+              <p className="text-[12px] font-medium text-gray-400">
+                Asset Tag: <span className="text-gray-600">{item.asset_tag}</span>
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="hidden md:flex w-9 h-9 items-center justify-center rounded-xl hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-700"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6">
+            <div className="grid grid-cols-2 gap-6">
+              <div className={detailGroupCls}>
+                <p className={labelCls}>Status</p>
+                <StatusPill status={item.status} />
+              </div>
+              <div className={detailGroupCls}>
+                <p className={labelCls}>Location</p>
+                <div className="flex flex-col">
+                  <span className={valueCls}>{item.location_room}</span>
+                  {item.location_shelf && (
+                    <span className="text-[11px] text-gray-400">Shelf: {item.location_shelf}</span>
+                  )}
+                </div>
+              </div>
+
+              <div className={detailGroupCls}>
+                <p className={labelCls}>Quantity (Total / Avail)</p>
+                <p className={valueCls}>
+                  {item.initial_quantity} /{" "}
+                  <span
+                    className={
+                      (item.available_quantity ?? 0) > 0
+                        ? "text-green-600"
+                        : "text-red-500"
+                    }
+                  >
+                    {item.available_quantity}
+                  </span>
+                </p>
+              </div>
+              <div className={detailGroupCls}>
+                <p className={labelCls}>Vendor</p>
+                <p className={valueCls}>{item.vendor || "—"}</p>
+              </div>
+
+              <div className={detailGroupCls}>
+                <p className={labelCls}>Purchase Cost</p>
+                <p className={valueCls}>
+                  {item.purchase_cost ? `₹${item.purchase_cost}` : "—"}
+                </p>
+              </div>
+              <div className={detailGroupCls}>
+                <p className={labelCls}>Purchase Date</p>
+                <p className={valueCls}>
+                  {item.purchase_date
+                    ? new Date(item.purchase_date).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : "—"}
+                </p>
+              </div>
+            </div>
+
+            {item.description && (
+              <div className={detailGroupCls + " border-t border-gray-50 pt-5"}>
+                <p className={labelCls}>Description</p>
+                <p className="text-[13px] font-medium text-gray-600 leading-relaxed italic">
+                  "{item.description}"
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-8 pt-6 border-t border-gray-100 flex gap-3">
+             {/* Optional: Add action buttons here if needed later */}
+             <button
+              onClick={onClose}
+              className="w-full py-3 rounded-xl bg-gray-900 text-white text-[13px] font-medium hover:bg-black transition-all shadow-lg shadow-gray-200"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ─────────────────────────────── row action menu ── */
 const ActionMenu = ({ item, onEdit, onToggleActive }) => {
   const [open, setOpen] = useState(false);
@@ -404,7 +546,10 @@ const ActionMenu = ({ item, onEdit, onToggleActive }) => {
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen(!open)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(!open);
+        }}
         className="text-gray-300 hover:text-gray-900 transition-colors p-1.5 rounded-lg hover:bg-gray-100"
       >
         <MoreVertical size={16} />
@@ -412,7 +557,8 @@ const ActionMenu = ({ item, onEdit, onToggleActive }) => {
       {open && (
         <div className="absolute right-0 top-8 z-20 bg-white border border-gray-100 rounded-xl shadow-lg w-40 overflow-hidden">
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               setOpen(false);
               onEdit(item);
             }}
@@ -421,7 +567,8 @@ const ActionMenu = ({ item, onEdit, onToggleActive }) => {
             <Edit3 size={14} className="text-[#E47926]" /> Edit
           </button>
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               setOpen(false);
               onToggleActive(item);
             }}
@@ -451,6 +598,7 @@ const Inventory = () => {
   const [filterLocation, setFilterLocation] = useState("All");
   const [editItem, setEditItem] = useState(null);
   const [toggleActiveItem, setToggleActiveItem] = useState(null);
+  const [detailItem, setDetailItem] = useState(null);
 
   useEffect(() => {
     const fetchItems = async () => {
@@ -572,6 +720,12 @@ const Inventory = () => {
           item={toggleActiveItem}
           onClose={() => setToggleActiveItem(null)}
           onToggled={handleToggledActive}
+        />
+      )}
+      {detailItem && (
+        <ItemDetailModal
+          item={detailItem}
+          onClose={() => setDetailItem(null)}
         />
       )}
 
@@ -735,7 +889,8 @@ const Inventory = () => {
                   return (
                     <tr
                       key={item.id}
-                      className={`transition-colors group ${item.is_active === false ? "opacity-60 bg-gray-50 hover:bg-gray-100/60" : "hover:bg-gray-50/50"}`}
+                      onClick={() => setDetailItem(item)}
+                      className={`transition-colors group cursor-pointer ${item.is_active === false ? "opacity-60 bg-gray-50 hover:bg-gray-100/60" : "hover:bg-gray-50/50"}`}
                     >
                       <td className="py-3 px-6">
                         <div className="flex items-center gap-4">
@@ -789,8 +944,12 @@ const Inventory = () => {
                       <td className="py-3 px-4 text-center">
                         <ActionMenu
                           item={item}
-                          onEdit={setEditItem}
-                          onToggleActive={setToggleActiveItem}
+                          onEdit={(i) => {
+                            setEditItem(i);
+                          }}
+                          onToggleActive={(i) => {
+                            setToggleActiveItem(i);
+                          }}
                         />
                       </td>
                     </tr>
